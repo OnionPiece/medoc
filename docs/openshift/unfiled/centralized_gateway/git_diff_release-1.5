@@ -27,7 +27,7 @@ index 5aa69bc..8e51f2e 100644
  	otx.AddFlow("table=0, priority=250, in_port=2, ip, nw_dst=224.0.0.0/4, actions=drop")
  	otx.AddFlow("table=0, priority=200, in_port=2, arp, nw_src=%s, nw_dst=%s, actions=goto_table:30", localSubnetGateway, clusterNetworkCIDR)
  	otx.AddFlow("table=0, priority=200, in_port=2, ip, actions=goto_table:30")
-+	// NOTE(lizk1989): Support for centralized SNAT
++	// NOTE(OnionPiece): Support for centralized SNAT
 +        otx.AddFlow("table=0, priority=160, in_port=1, ip, nw_src=%s, actions=move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],goto_table:100", clusterNetworkCIDR)
 +        otx.AddFlow("table=0, priority=160, in_port=1, ip, nw_dst=%s, actions=move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],goto_table:10", clusterNetworkCIDR)
  	otx.AddFlow("table=0, priority=150, in_port=2, actions=drop")
@@ -37,7 +37,7 @@ index 5aa69bc..8e51f2e 100644
  			glog.Errorf("Error adding OVS flows for service %v, netid %d: %v", service, netID, err)
  		}
  	}
-+	// NOTE(lizk1989): Support for centralized SNAT
++	// NOTE(OnionPiece): Support for centralized SNAT
 +	if len(service.Spec.ExternalIPs) > 0 && len(service.ObjectMeta.Annotations) >= 3 {
 +		if cSNATTunIP, ok := service.ObjectMeta.Annotations["c_snat_tun_ip"]; ok && plugin.localIP!= cSNATTunIP {
 +			if cSNATMAC, ok := service.ObjectMeta.Annotations["c_snat_mac"]; ok {
@@ -57,7 +57,7 @@ index 5aa69bc..8e51f2e 100644
  			glog.Errorf("Error deleting OVS flows for service %v: %v", service, err)
  		}
  	}
-+	// NOTE(lizk1989): Support for centralized SNAT
++	// NOTE(OnionPiece): Support for centralized SNAT
 +	if len(service.Spec.ExternalIPs) > 0 && len(service.ObjectMeta.Annotations) >= 2 {
 +		if cSNATGatewayId, ok := service.ObjectMeta.Annotations["csnat_gw_id"]; ok {
 +			otx.DeleteFlows("table=100, ip, reg3=0x%s", cSNATGatewayId)
@@ -149,7 +149,7 @@ index cfa3c36..c005d22 100644
  		}
  	}
  
-+        // NOTE(lizk1989): create and link the kube external ips chain.
++        // NOTE(OnionPiece): create and link the kube external ips chain.
 +        if _, err := proxier.iptables.EnsureChain(utiliptables.TableFilter, kubeExternalIPsChain); err != nil {
 +                glog.Errorf("Failed to ensure that %s chain %s exists: %v", utiliptables.TableFilter, kubeExternalIPsChain, err)
 +                return
@@ -166,7 +166,7 @@ index cfa3c36..c005d22 100644
  		}
  		writeLine(natRules, append(args, "-j", string(svcChain))...)
  
-+		// NOTE(lizk1989) Used to install SNAT rules for pods backed to a service with externalIPs
++		// NOTE(OnionPiece) Used to install SNAT rules for pods backed to a service with externalIPs
 +		installedEgressSNAT := false
 +
  		// Capture externalIPs.
@@ -177,7 +177,7 @@ index cfa3c36..c005d22 100644
  			// This covers cases like GCE load-balancers which get added to the local routing table.
  			writeLine(natRules, append(dstLocalOnlyArgs, "-j", string(svcChain))...)
 +
-+			// NOTE(lizk1989): Allow pods backed to a service with external IPs, to use first external IP to access external network.
++			// NOTE(OnionPiece): Allow pods backed to a service with external IPs, to use first external IP to access external network.
 +			if !installedEgressSNAT {
 +				if len(proxier.clusterCIDR) > 0 {
 +					endpoints := make([]*endpointsInfo, 0)

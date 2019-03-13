@@ -78,7 +78,7 @@ I used some scripts to deploy a simple network topology to test ipvs tun mode,
 for bidirection tunneling and IP reachable.
 
 They can be found at
-https://github.com/lizk1989/zongkai_cookbook/tree/master/docs/ipvs/ipvs-tun-test
+https://github.com/OnionPiece/medoc/tree/master/docs/ipvs/ipvs-tun-test
 
 The scripts tested on:
   - Ubuntu 16.04 ... failed

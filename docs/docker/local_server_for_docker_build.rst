@@ -54,7 +54,7 @@ While building image, you can just choose to get all projects from github.com or
 yum repo & file server
 ======================
 
-Check https://github.com/lizk1989/localrepo .
+Check https://github.com/OnionPiece/container-localrepo .
 
 Similar to `git clone`, since the server signed certificates by itself, you need one of the following way to skip SSL checking:
 

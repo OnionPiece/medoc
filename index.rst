@@ -9,7 +9,6 @@ Welcome to zongkai personal learning documentation!
 .. toctree::
    :maxdepth: 1
 
-   docs/hello_world/index
    docs/nginx/index
    docs/ipvs/index
    docs/ovs/index

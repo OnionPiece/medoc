@@ -212,7 +212,7 @@
                     }
                     writeLine(natRules, append(args, "-j", string(svcChain))...)
     +
-    +               // NOTE(lizk1989) Used to install SNAT rules for pods backed to a service with externalIPs
+    +               // NOTE(OnionPiece) Used to install SNAT rules for pods backed to a service with externalIPs
     +               installedEgressSNAT := false
     +
                     // Capture externalIPs.
@@ -223,7 +223,7 @@
                             // This covers cases like GCE load-balancers which get added to the local routing table.
                             writeLine(natRules, append(dstLocalOnlyArgs, "-j", string(svcChain))...)
     +
-    +                       // NOTE(lizk1989): Allow pods backed to a service with external IPs, to use first external IP to access external network.
+    +                       // NOTE(OnionPiece): Allow pods backed to a service with external IPs, to use first external IP to access external network.
     +                       if !installedEgressSNAT {
     +                               if len(proxier.clusterCIDR) > 0 {
     +                                       endpoints := make([]*endpointsInfo, 0)

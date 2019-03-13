@@ -23,7 +23,7 @@
 
 解决当时的故障的方法，就是修复故障Master节点的路由。但是更进一步地，想要解决当外部负载均衡知道某个Master无法访问CaaS Portal时“踢掉”该Master的问题，则会引出一些列目前无解的问题。
 
-首先，这是一个探测的问题。区别于常见的健康检查，那种情况只探测一层，即LB到Server，并且不考虑后面的Server其实也是一个Server。而对于两层LB，即外层LB -- LB -- Server的情况，我们需要外层LB能够探测到Server是否可达。毫无疑问，想要达到这个目的，靠tcp check是不行的，因此就需要外部LB配置http check，靠http ckeck穿透内部LB到达Server。https://github.com/lizk1989/netns-topo/tree/master/haproxy/1to3_vertical_lb_test 作为一个例子给出了这样的展示。
+首先，这是一个探测的问题。区别于常见的健康检查，那种情况只探测一层，即LB到Server，并且不考虑后面的Server其实也是一个Server。而对于两层LB，即外层LB -- LB -- Server的情况，我们需要外层LB能够探测到Server是否可达。毫无疑问，想要达到这个目的，靠tcp check是不行的，因此就需要外部LB配置http check，靠http ckeck穿透内部LB到达Server。https://github.com/OnionPiece/netns-topo/tree/master/topologies/haproxy_1to3_vertical_lb.yaml 作为一个例子给出了这样的展示。
 
 但这就带来一个问题，目前外部LB的配置是没有做acl的，所有访问80端口的流量都将走到同一组backend。那么就意味着，如果一个Master到CaaS Portal的探测失败，它将同时不能代理其他用户容器的业务流量，即使它只是到CaaS Portal节点的链路有问题，这就带来了资源使用上的不合理的弃用。但反过来，如果CaaS Portal发生故障，那么所有的Master都将无法代理用户容器业务流量，意味着整个集群业务网的瘫痪。
 

@@ -33,7 +33,7 @@
                 }
         }
      
-    +        // NOTE(lizk1989): create and link the kube external ips chain.
+    +        // NOTE(OnionPiece): create and link the kube external ips chain.
     +        if _, err := proxier.iptables.EnsureChain(utiliptables.TableFilter, kubeExternalIPsChain); err != nil {
     +                glog.Errorf("Failed to ensure that %s chain %s exists: %v", utiliptables.TableFilter, kubeExternalIPsChain, err)
     +                return

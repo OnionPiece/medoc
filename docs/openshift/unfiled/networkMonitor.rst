@@ -7,7 +7,7 @@ OpenShift平台网络监控
 SDN网络连通性
 =============
 
-参考 https://github.com/lizk1989/octopus/tree/master/sdnChecker 。该项目的实现逻辑包括:
+参考 https://github.com/OnionPiece/octopus/tree/master/sdnChecker 。该项目的实现逻辑包括:
 
   - 各个节点，包括Master和Node，都会以daemonSet的方式跑一个包含监控容器；
   - 这个监控容器内部运行一个haproxy来检查该容器到其他节点tun0的可达性，暴露stat metrics在容器的1936端口；
@@ -17,7 +17,7 @@ SDN网络连通性
 重复VIP
 =======
 
-参考 https://github.com/lizk1989/octopus/tree/master/dupVIPMonitor 。 该项目的实现逻辑包括:
+参考 https://github.com/OnionPiece/octopus/tree/master/dupVIPMonitor 。 该项目的实现逻辑包括:
 
   - 以DC的方式在不会绑定VIP的节点上部署监控容器；
   - 这个监控容器内部运行一个监控程序，通过 https://github.com/ThomasHabets/arping 通过检查是否重复的ARP应答来判断VIP是否有重复；

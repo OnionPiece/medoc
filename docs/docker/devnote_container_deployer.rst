@@ -6,7 +6,7 @@ Devnote container deployer
 
 按照之前的方法及脚本可以重新生成证书，从而使得etcd-cluster能够正常启动。从“好事者”的角度来看，这种因为环境因素，导致测试环境无法搭建起来的情况，其实是可以通过容器来解决的，这样的话，为什么不可以通过容器写一个部署器，来将环境整体搭建起来呢。这包括生成证书，build镜像，以及运行容器。
 
-关于证书生成，参考 https://github.com/kelseyhightower/etcd-production-setup ，但需要稍作修改，修改后 https://github.com/lizk1989/scripts/blob/master/generate_etcd_cluster_ca_files.sh .
+关于证书生成，参考 https://github.com/kelseyhightower/etcd-production-setup ，但需要稍作修改，修改后 https://github.com/OnionPiece/scripts/blob/master/generate_etcd_cluster_ca_files.sh .
 
 关于docker API，对于golang，可以借助 github.com/docker/docker/client。可能API本文本身并没有太多的example，因此需要借助查看项目的测试代码，以及在github上搜索他人的用例来进行借鉴。这里没有太大的问题，比较困难的地方是在公司网络糟糕的状况下，docker build的时候go get速度非常慢。
 
