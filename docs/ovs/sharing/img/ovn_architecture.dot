@@ -1,0 +1,14 @@
+digraph {
+    cms [shape=box, label="CMS"];
+    db  [shape=record, label="{<ndb>NorthBound_DB|northd|<sdb>SouthBound_DB}"];
+    n1  [shape=record, label="{<x>ovn-controller|{ovs-vswitchd|ovsdb-server}}"];
+    nx  [shape=record, label="{<x>ovn-controller|{ovs-vswitchd|ovsdb-server}}"];
+    nb  [shape=plaintext, label="Logical Switch\nLogical Port\nLogical Router\nACL\n..."];
+    sb  [shape=plaintext, label="Chassis\nPort Binding\nDatapath Binding\nEncap\nLogical Flow\n..."];
+
+    cms -> db [dir=both]
+    nb -> db:ndb  [arrowhead=none, headport=nw, tailport=e]
+    sb -> db:sdb  [arrowhead=none, headport=se, tailport=s]
+    db:sdb-> n1:x [dir=both, headport=n, tailport=s]
+    db:sdb-> nx:x [dir=both, headport=n, tailport=s]
+}

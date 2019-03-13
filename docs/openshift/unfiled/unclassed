@@ -1,0 +1,22 @@
+https://docs.openshift.com/container-platform/3.9/scaling_performance/cluster_limits.html
+
+  OpenShift Container Platform Cluster Limits
+
+    Limit Type                          3.9 Limit
+    ---------------------------------------------
+    Number of nodes                     2K
+    Number of pods                      120K
+    Number of pods per node             250
+    Number of pods per core             10 is the default value. The maximum supported value is the number of pods per node.
+    Number of namespaces                10K
+    Number of pods per namespace        15K
+    Number of services                  10K
+    Number of back-ends per service     5K
+    Number of deployments per namespace 20K
+
+
+https://docs.openshift.com/container-platform/3.9/scaling_performance/managing_hugepages.html
+
+
+https://docs.openshift.com/container-platform/3.9/install_config/master_node_configuration.html#node-configuration-files
+    nodeIP

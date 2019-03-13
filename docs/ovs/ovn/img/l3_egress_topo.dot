@@ -1,0 +1,10 @@
+graph {
+    ext [shape=box, label="External provider network\n192.168.1.224/27"];
+    router [shape=box, label="Logical_Router"];
+    switch [shape=box, label="Logical_Switch\n10.0.0.0/24"];
+    port [shape=box, label="Logical_Switch_Port\n10.0.0.11/24"];
+
+    ext -- router [headlabel="192.168.1.233  fa:16:3e:2c:fa:a8"];
+    router -- switch [taillabel="10.0.0.1  fa:16:3e:3a:ce:46"];
+    switch -- port [headlabel="tap9a78720e-2c  10.0.0.11  fa:16:3e:4c:21:45"];
+}

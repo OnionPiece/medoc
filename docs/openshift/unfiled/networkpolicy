@@ -1,0 +1,8 @@
+From https://blog.openshift.com/whats-new-in-openshift-3-5-network-policy-tech-preview/
+
+The first step is to enable Network Policy, by replacing the current SDN plug-in with the ovs-networkpolicy plug-in.
+
+Change the networkPluginName parameter on all masters and nodes in their configuration files. => redhat/openshift-ovs-networkpolicy
+
+systemctl restart origin-master
+systemctl restart origin-node  => error: SDN node startup failed  => pkg/cmd/server/kubernetes/node.go:351

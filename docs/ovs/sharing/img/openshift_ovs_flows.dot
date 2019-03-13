@@ -1,0 +1,28 @@
+digraph {
+    node [shape=box];
+    pkt [label="Packet ARP/IP"];
+    t0 [label="Table 0\nInput dispatch"];
+    t10 [label="Table 10\nVXLAN validation"];
+    t20 [label="Table 20\nLocal Pod validation"];
+    t30 [label="Table 30\nDestination dispatch"];
+    t40 [label="Table 40\nLocal ARP forward"]
+    t50 [label="Table 50\nRemote ARP forward"]
+    t60 [label="Table 60\nService IP forward"]
+    t70 [label="Table 70\nLocal Pod forward"]
+    t80 [label="Table 80\nOutput validation"]
+    t90 [label="Table 90\nRemote IP forward"]
+    t100 [label="Table 100\nExternal IP forward"]
+
+    pkt -> t0;
+    t0 -> t10 -> t30;
+    t0 -> t20 -> t30;
+    t0 -> t30;
+    t30 -> t40;
+    t40 -> tun0;
+    t40 -> veth;
+    t30 -> t50 -> VXLAN;
+    t30 -> t60 -> tun0;
+    t30 -> t70 -> t80 -> veth;
+    t30 -> t90 -> VXLAN;
+    t30 -> t100 -> tun0;
+}

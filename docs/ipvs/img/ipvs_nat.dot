@@ -1,0 +1,18 @@
+graph {
+    router [shape=box, label="Virtual Router"];
+    ls1 [shape=box, label="Logical switch-1"];
+    ls2 [shape=box, label="Logical switch-2"];
+    ls3 [shape=box, label="Logical switch-2"];
+    client [shape=box];
+    lb [shape=box, label="ipvs lb"];
+    rs1 [shape=box, label="ipvs rs1"];
+    rs2 [shape=box, label="ipvs rs2"];
+
+    router -- ls2;
+    router -- ls3;
+    ls1 -- client;
+    ls1 -- lb;
+    ls2 -- lb;
+    ls3 -- rs1;
+    ls3 -- rs2;
+}

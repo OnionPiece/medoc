@@ -1,0 +1,3 @@
+make html && sudo rm -rf /var/www/html/* && sudo mv _build/html/* /var/www/html/
+
+dot -Tjpg IMAGE.dot -o IMAGE.jpg

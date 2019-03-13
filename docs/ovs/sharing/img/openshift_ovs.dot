@@ -1,0 +1,28 @@
+digraph G {
+    compound=true;
+    node [shape=box];
+    subgraph cluster0 {
+        label = "node1\n10.128.12.0/22"
+        labelloc = "b"
+        ovs1 [label="OVS"];
+        tun1 [shape=plaintext, label="tun0\n10.128.12.1/22"];
+        tun1 -> ovs1 [arrowhead=none];
+        pod1 [label="pod1\n10.128.12.100"];
+        pod1 -> ovs1;
+    }
+    subgraph cluster1 {
+        label = "node2\n10.128.16.0/22"
+        labelloc = "b"
+        ovs2 [label="OVS"];
+        tun2 [shape=plaintext, label="tun0\n10.128.16.1/22"];
+        tun2 -> ovs2 [arrowhead=none];
+        pod2 [label="pod2\n10.128.16.101"];
+        pod2 -> ovs2;
+    }
+
+    svc [label="Service\n172.16.0.100"];
+    svc -> pod1;
+    svc -> pod2;
+    ovs1 -> VXLAN [dir=both];
+    ovs2 -> VXLAN [dir=both];
+}

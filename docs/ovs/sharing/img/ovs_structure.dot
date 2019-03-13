@@ -1,0 +1,17 @@
+digraph {
+    node [shape=box]
+    db         [label="db.conf\n(OVSDB json file)"];
+    dbserver   [label="ovsdb-server"];
+    dbsock     [label="db.sock\n(Unix socket file)"];
+    switch     [label="ovs-vswitchd"];
+    br0        [label="br0"]
+    br_int     [label="br-int"]
+    cli        [label="ovs-vsctl"]
+
+    dbserver -> db
+    dbsock -> dbserver
+    switch -> dbsock
+    switch -> br0
+    switch -> br_int
+    cli    -> dbsock
+}

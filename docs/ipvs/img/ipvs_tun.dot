@@ -1,0 +1,17 @@
+graph {
+    ls1 [shape=box, label="192.168.1.0/24"];
+    ls2 [shape=box, label="22.22.22.0/24"];
+    ls3 [shape=box, label="33.33.33.0/24"];
+    client [shape=box];
+    lb [shape=box, label="ipvs lb"];
+    rs1 [shape=box, label="ipvs rs1"];
+    rs2 [shape=box, label="ipvs rs2"];
+
+    router -- ls2;
+    router -- ls3;
+    ls1 -- client;
+    ls1 -- lb;
+    ls2 -- lb;
+    ls3 -- rs1;
+    ls3 -- rs2;
+}

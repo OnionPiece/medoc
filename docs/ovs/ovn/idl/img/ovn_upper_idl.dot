@@ -1,0 +1,15 @@
+graph {
+    api2 [shape=box, label="API(ovsdbapp/api.py) (API-2)"];
+    api1 [shape=box, label="API (API-1)\n(ovsdbapp/schema/ovn_northbound/api.py)"];
+    backend2 [shape=box, label="Backend (Backend-2)\n(ovsdbapp/backend/ovs_idl/__init__.py)"];
+    backend1 [shape=box, label="Backend (Backend-1)\n(networking_ovn/ovsdb/impl_ovn_idl.py)"];
+    api_impl [shape=box, label="OvnNbApiIdlImpl\n(ovsdbapp/schema/ovn_northbound/impl_idl.py)"];
+    idl [shape=box, label="OvsdbNbOvnIdl(networking_ovn/ovsdb/impl_ovn_idl.py)"];
+
+    api2 -- api1;
+    api1 -- api_impl;
+    backend2 -- api_impl;
+    backend2 -- backend1;
+    api_impl -- idl;
+    backend1 -- idl;
+}

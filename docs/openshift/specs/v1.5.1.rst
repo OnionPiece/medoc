@@ -1,0 +1,182 @@
+**********************
+OpenShift v1.5.1 specs
+**********************
+
+不同资源的属性有很多，这里只会对其中一部分进行列举。
+
+
+Route
+=====
+
+path
+----
+
+"Path that the router watches for, to route traffic for to the service. Optional."
+
+事实上，根 */* 应该是默认值。可以添加为一条route指定一个其他的路径，like */static* 。这样的话，在router的haproxy配置文件中，os_http_be.map里会有一条 *FQDN/static* 的记录用来匹配Service(backend)。而在haproxy.config文件中，backend的配置与匹配到 */* 的无差别，不会做任何url的处理，因此需要对应Service下的pod的服务能够有 *static* "目录"。
+
+
+alternateBackends
+-----------------
+
+"Routes can direct traffic to multiple services for A/B testing. Each service has a weight controlling how much traffic it gets."
+
+允许为一个route配置多个Service，Service可以配置weight(1~256)。Router的haproxy.config中，同一个Service下相同的pod/server将具有相同的weight。
+
+目前实测失败。需要进一步排查原因。（参看下面的sessionAffinity）
+
+
+Service
+=======
+
+externalIPs
+-----------
+
+从描述（oc explain svc.spec.externalIPs，以及https://docs.openshift.org/latest/architecture/core_concepts/pods_and_services.html#service-externalip ）来看，功能上有点像OpenStack的floatingIP。
+
+需要修改:
+  /etc/origin/master/master-config.yaml
+    networkConfig:
+      ExternalIPNetworkCIDR: 192.0.1.0.0/24
+
+修改后重启master server。
+
+实测情况为，配置项为ExternalIPNetworkCIDRS: 0.0.0.0/0。修改Service，添加了:
+  externalIPs:
+  - 10.70.39.211
+
+在pod所在的node上，为lo添加了10.70.39.211的地址。并且保证client的地址可以ping通10.70.39.211。之后，以10.70.39.211和Service的端口访问成功。
+
+
+sessionAffinity
+---------------
+
+"Used to maintain session affinity. Enable client IP based session affinity."，也就是基于source IP的负载均衡，需要配置value为 *ClientIP* 。
+
+实测发现，Router Pod中的haproxy配置有问题，而计算节点上的iptables规则配置则是符合预期的:
+
+  - haproxy的配置始终为leastconn
+  - iptables会为各个Pod维持一个队列，Service的请求会在各个队列中进行匹配，如果发现client IP在队列中，则匹配到对应的Pod；否则随机选择一个Pod，并将IP加入到Pod的队列中
+
+注: haproxy的配置始终为leastconn这一点，似乎解释了alternateBackends实测失败的现象。
+
+
+externalName
+------------
+
+*oc explain svc.spec.externalName* 并没有给出足够好的解释。比较的好说明可以在 https://kubernetes.io/docs/concepts/services-networking/service/#services-without-selectors 的最后两段中发现::
+
+    An ExternalName service is a special case of service that does not have
+    selectors. It does not define any ports or Endpoints. Rather, it serves as a
+    way to return an alias to an external service residing outside the cluster.
+
+        kind: Service
+        apiVersion: v1
+        metadata:
+          name: my-service
+          namespace: prod
+        spec:
+          type: ExternalName
+          externalName: my.database.example.com
+
+    When looking up the host my-service.prod.svc.CLUSTER, the cluster DNS
+    service will return a CNAME record with the value my.database.example.com.
+    Accessing such a service works in the same way as others, with the only
+    difference that the redirection happens at the DNS level and no proxying or
+    forwarding occurs. Should you later decide to move your database into your
+    cluster, you can start its pods, add appropriate selectors or endpoints and
+    change the service type.
+
+关键点:
+
+  1. it serves as a way to return an alias to an external service residing outside the cluster.
+  2. Should you later decide to move your database into your cluster, you can start its pods, add appropriate selectors or endpoints and change the service type.
+
+第一点说明了工作方式，即在集群DNS上配置一条alias/CNAME，来指向集群外的服务。集群的容器以集群的FQDN访问Service时，集群DNS会查询对应的外部域名的IP地址，并返回给容器。而第二点，说明该功能的应用场景，用户的服务可能由不同模块组成，其中一部分已经上云了，而另一部分还没有。为了保持服务的连惯性，或者说稳定性，用户可以创建一个指向集群外模块的Service，供集群内的其他服务使用，而当合适的时候，用户全部迁到云上时，通过修改selectors及endpoints就可以维持Service FQDN的不变。
+
+待测试。
+
+
+Pod
+===
+
+hostNetwork and nodeName
+------------------------
+
+最佳的例子就是Router Pod。
+
+
+subdomain and hostname
+----------------------
+
+If specified, the fully qualified Pod hostname will be "<hostname>.<subdomain>.<pod namespace>.svc.<cluster domain>". If not specified, the pod will not have a domainname at all.
+
+Specifies the hostname of the Pod If not specified, the pod's hostname will be set to a system-defined value.
+
+实测遇到::
+
+    Failed to process the resource.
+    Pod "flask-1-5vt98" is invalid: spec: Forbidden: pod updates may not change fields other than `containers[*].image` or `spec.activeDeadlineSeconds`
+
+不过进一步考虑，这个功能的实用价值可能并不高。但也不能排除用户的奇怪场景会用的上。
+
+
+activeDeadlineSeconds and terminationGracePeriodSeconds
+-------------------------------------------------------
+
+这两个属性，可以用来学习K8S的相关机制。
+
+
+NetworkPolicy
+=============
+
+无论是 *oc explain networkpolicy.spec* 还是 https://blog.openshift.com/whats-new-in-openshift-3-5-network-policy-tech-preview/ ，都打动了我。更有策略的去控制通还是不通，而不是全通 or 全不通。但遗憾的是"The first step is to enable Network Policy, by replacing the current SDN plug-in with the ovs-networkpolicy plug-in."。
+
+
+dc.spec.template
+================
+
+
+volumns.configMap
+-----------------
+
+ConfigMap represents a configMap that should populate this volume.
+
+The contents of the target ConfigMap's Data field will be presented in a volume as files using the keys in the Data field as the file names, unless the items element is populated with specific mappings of keys to paths. ConfigMap volumes support ownership management and SELinux relabeling.
+
+volumns.configMap有三个参数，name, items和defaultMode（default 0644)。name指定了所要引用的configMap，对于被引用的configMap，其Data中的key和value为别做文件的名字和内容。items是一个包含了<key, mode, path>的list，其中key和mode分别对应name和defaultMode，而path是文件存储的路径。
+
+参考router dc中情况::
+
+    volumes:
+    - configMap:
+        defaultMode: 420
+        name: proxyrouter
+      name: config-volume
+
+其中proxyrouter是configMap，其data为::
+
+    haproxy-config.template: "{{/*\r\n    haproxy-config.cfg: contains the main config
+        with helper backends that are used to terminate\r\n    \t\t\t\t\tencryption before
+        ...
+
+以上内容指定了router pod会挂在一个名为config-volume的卷，卷里有一个名为haproxy-config.template的文件，文件内容为"{{/\*\r\n    haproxy-config.cfg: ...."，文件的mode为0420。
+
+
+containers.volumeMounts
+-----------------------
+
+VolumeMount describes a mounting of a Volume within a container. Cannot be updated.
+
+mountPath and name are required, which point to:
+
+  - Path within the container at which the volume should be mounted.  Must not contain ':'.
+  - Name of a Volume.
+
+继续参考router dc中的情况::
+
+    volumeMounts:
+    - mountPath: /var/lib/haproxy/conf/custom
+      name: config-volume
+
+config-volume就是前面所提到的pod挂在的卷，这个卷的挂载位置是/var/lib/haproxy/conf/custom 。

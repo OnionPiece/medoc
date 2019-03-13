@@ -1,0 +1,17 @@
+graph {
+    size = "4, 4";
+    root_idl [shape=box, label="ovn.db.idl.Idl"]
+    ovsdbapp_idl [shape=box, label="ovsdbapp.backend.ovs_idl.connection.OvsdbIdl"]
+    BaseOvnIdl [shape=box]
+    BaseOvnSbIdl [shape=box]
+    OvnIdl [shape=box]
+    OvnNbIdl [shape=box]
+    OvnSbIdl [shape=box]
+
+    root_idl -- ovsdbapp_idl;
+    ovsdbapp_idl -- BaseOvnIdl;
+    ovsdbapp_idl -- BaseOvnSbIdl;
+    BaseOvnIdl -- OvnIdl;
+    OvnIdl -- OvnNbIdl;
+    OvnIdl -- OvnSbIdl;
+}

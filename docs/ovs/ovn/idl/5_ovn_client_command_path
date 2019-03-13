@@ -1,0 +1,195 @@
+                                           ovn_client
+                                           |
+                                           |add commands
+                                           |
+                                           V
+                                           _nb_idl.transaction
+                                           |
+                                           |__exit__
+                                           |                                         A
+                                           V                                         |
+                                           _nb_idl.ovsdb_connection.queue_txn(self)  |result
+                                           |            \                            |
+                                           |          _nb_idl.transaction.results.get()
+                                           |                                          A
+                                           |ovsdb_connection.run                      .
+                                           |                                          .
+                                           V                                          .
+                                           _nb_idl.transaction.do_commit() => result  .
+                                           |       \                                  .
+                                           |      _nb_idl.transaction.results.put(result)
+                                           |
+                                           |command.run_idl(ovs.db.idl.Transaction)
+                                           |
+                                           V
+                     +---------------------+---------------------+ [1]
+                     |                                           |
+                idl.insert                row = _nb_idl.ovsdb_connection.idl.tables[table].rows[uuid]
+                     |                                           |
+        idl._txn_rows[uuid] = row         row.delete(), row.delvalue(col, val), setattr(row, col, val)
+                     |                                           |
+                     +---------------------+---------------------+
+                                           |
+                                           |txn.commit_block in ovsdb_connection threading running loop
+                                           V
+                           ovs.db.idl.Transaction.commit_block
+                               send transaction message to ovsdb
+
+
+[1] idl fetch rows
+_nb_idl.ovsdb_connection.idl
+  Idl
+    __init__
+      self._last_seqno = None
+      self.state = self.IDL_S_INITIAL
+      self.lock_name = None
+
+    run
+      ...
+      while i < 50:
+        if not self._session.is_connected():
+          break
+        seqno = self._session.get_seqno()  [3]
+        if seqno != self._last_seqno:
+          self._last_seqno = seqno
+          self.__txn_abort_all()
+          self.__send_monitor_request()
+          if self.lock_name:
+              self.__send_lock_request()
+          break
+
+        msg = self._session.recv()
+        ...
+        elif (msg.type == ovs.jsonrpc.Message.T_REPLY
+              and self._monitor_request_id is not None
+              and self._monitor_request_id == msg.id):
+          # Reply to our "monitor" request.
+          try:
+            self.__clear()
+            if self.state == self.IDL_S_MONITOR_COND_REQUESTED:
+              self.__parse_update(msg.result, OVSDB_UPDATE2)
+            else:
+              assert self.state == self.IDL_S_MONITOR_REQUESTED
+              self.__parse_update(msg.result, OVSDB_UPDATE)
+          ...
+
+    __send_monitor_request
+      if self.state == self.IDL_S_INITIAL:
+        self.state = self.IDL_S_MONITOR_COND_REQUESTED
+        send monitor-cond request
+      else:
+        send monitor request
+
+    __clear
+      clear all tables rows if any
+
+    __parse_update
+      __do_parse_update
+
+    __do_parse_update
+      for table_name, table_update in six.iteritems(table_updates):
+        for uuid_string, row_update in six.iteritems(table_update):
+          uuid = ovs.ovsuuid.from_string(uuid_string)
+          if version == OVSDB_UPDATE2:
+            if self.__process_update2(table, uuid, row_update):
+          ...
+
+    __process_update2
+      ...
+      elif "insert" in row_update or "initial" in row_update:
+        if row:
+          del table.rows[uuid]
+        row = self.__create_row(table, uuid)
+        if "insert" in row_update:
+          row_update = row_update['insert']
+        else:
+          row_update = row_update['initial']
+        self.__add_default(table, row_update)
+        if self.__row_update(table, row, row_update):
+          changed = True
+          self.notify(ROW_CREATE, row)  [2]
+
+    __create_row
+      row = table.rows[uuid] = Row(self, table, uuid, data)
+      return row
+
+[2] idl notify
+networking_ovn.ovsdb.ovsdb_monitor.OvnIdl
+  notify
+    self.notify_handler.notify
+
+  __init__
+    self.notify_handler = OvnDbNotifyHandler(driver)
+
+networking_ovn.ovsdb.ovsdb_monitor.OvnDbNotifyHandler(event.RowEventHandler)
+ovsdbapp.event.RowEventHandler
+  notify:
+      matching = self.matching_events(event, row, updates)
+      for match in matching:
+          self.notifications.put((match, event, row, updates))  // find matched events, put on queue
+
+  matching_events
+      with self.__lock:
+          return tuple(t for t in self.__watched_events
+                       if t.matches(event, row, updates))   // check below
+
+  __init__
+    self.__watched_events = set()
+    self.notifications = Queue.Queue()
+    self.notify_thread = threading.Thread(target=self.notify_loop)
+    self.notify_thread.daemon = True
+    atexit.register(self.shutdown)
+    self.start()
+
+  start
+    self.notify_thread.start()
+
+  notify_loop(self):
+    while True:
+      try:
+        match, event, row, updates = self.notifications.get()   // fetch events on queue
+        if (match, event, row, updates) == STOP_EVENT:
+          self.notifications.task_done()
+          break
+        match.run(event, row, updates)                          // call event run
+        if match.ONETIME:
+          self.unwatch_event(match)
+        self.notifications.task_done()
+      ...
+
+  watch_event           // watch_events is a for-loop version than watch_event
+    with self.__lock:
+      self.__watched_events.add(event)
+
+Use watch_event or watch_events to add events to notify_handler, like:
+OvnNbIdl
+  __init__
+    self._lsp_update_up_event = LogicalSwitchPortUpdateUpEvent(driver)
+    self.notify_handler.watch_events([self._lsp_create_up_event, ...])
+
+For event, like:
+LogicalSwitchPortUpdateUpEvent(row_event.RowEvent)
+  __init__
+    table = 'Logical_Switch_Port'
+    events = (self.ROW_CREATE)
+    super(LogicalSwitchPortCreateDownEvent, self).__init__(events, table, (('up', '=', False),))
+
+  run
+    self.driver.set_port_status_down(row.name)
+
+ovsdbapp.backend.ovs_idl.event.RowEvent(ovsdbapp.event.RowEvent)
+  matches
+    if event not in self.events:
+      return False
+    if row._table.name != self.table:
+      return False
+    ...
+    return True
+
+ovsdbapp.event.RowEvent
+  __init__(self, events, table, conditions, old_conditions=None):
+    self.condition = condition
+
+
+[3] session seqno and idl run
+session seqno is initialled as 0, and each time session get connected and disconnected via stream or rpc, seqno get increased.

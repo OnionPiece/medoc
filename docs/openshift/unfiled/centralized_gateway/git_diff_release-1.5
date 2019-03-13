@@ -1,0 +1,234 @@
+diff --git a/pkg/sdn/plugin/bin/openshift-sdn-ovs b/pkg/sdn/plugin/bin/openshift-sdn-ovs
+index 3805981..9fdc03a 100755
+--- a/pkg/sdn/plugin/bin/openshift-sdn-ovs
++++ b/pkg/sdn/plugin/bin/openshift-sdn-ovs
+@@ -10,6 +10,7 @@ ipaddr=$4
+ tenant_id=$5
+ ingress_bw=$6
+ egress_bw=$7
++csnat_gw_id=$8
+ 
+ lockwrap() {
+     (
+@@ -39,7 +40,7 @@ add_ovs_flows() {
+ 
+     # from container
+     ovs-ofctl -O OpenFlow13 add-flow br0 "table=20, priority=100, in_port=${ovs_port}, arp, nw_src=${ipaddr}, arp_sha=${macaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:21"
+-    ovs-ofctl -O OpenFlow13 add-flow br0 "table=20, priority=100, in_port=${ovs_port}, ip, nw_src=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], goto_table:21"
++    ovs-ofctl -O OpenFlow13 add-flow br0 "table=20, priority=100, in_port=${ovs_port}, ip, nw_src=${ipaddr}, actions=load:${tenant_id}->NXM_NX_REG0[], load:0x${csnat_gw_id}->NXM_NX_REG3[], goto_table:21"
+ 
+     # arp request/response to container (not isolated)
+     ovs-ofctl -O OpenFlow13 add-flow br0 "table=40, priority=100, arp, nw_dst=${ipaddr}, actions=output:${ovs_port}"
+diff --git a/pkg/sdn/plugin/controller.go b/pkg/sdn/plugin/controller.go
+index 5aa69bc..8e51f2e 100644
+--- a/pkg/sdn/plugin/controller.go
++++ b/pkg/sdn/plugin/controller.go
+@@ -250,6 +250,9 @@ func (plugin *OsdnNode) SetupSDN() (bool, error) {
+ 	otx.AddFlow("table=0, priority=250, in_port=2, ip, nw_dst=224.0.0.0/4, actions=drop")
+ 	otx.AddFlow("table=0, priority=200, in_port=2, arp, nw_src=%s, nw_dst=%s, actions=goto_table:30", localSubnetGateway, clusterNetworkCIDR)
+ 	otx.AddFlow("table=0, priority=200, in_port=2, ip, actions=goto_table:30")
++	// NOTE(lizk1989): Support for centralized SNAT
++        otx.AddFlow("table=0, priority=160, in_port=1, ip, nw_src=%s, actions=move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],goto_table:100", clusterNetworkCIDR)
++        otx.AddFlow("table=0, priority=160, in_port=1, ip, nw_dst=%s, actions=move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],goto_table:10", clusterNetworkCIDR)
+ 	otx.AddFlow("table=0, priority=150, in_port=2, actions=drop")
+ 	// else, from a container
+ 	otx.AddFlow("table=0, priority=100, arp, actions=goto_table:20")
+@@ -466,6 +469,19 @@ func (plugin *OsdnNode) AddServiceRules(service *kapi.Service, netID uint32) {
+ 			glog.Errorf("Error adding OVS flows for service %v, netid %d: %v", service, netID, err)
+ 		}
+ 	}
++	// NOTE(lizk1989): Support for centralized SNAT
++	if len(service.Spec.ExternalIPs) > 0 && len(service.ObjectMeta.Annotations) >= 3 {
++		if cSNATTunIP, ok := service.ObjectMeta.Annotations["c_snat_tun_ip"]; ok && plugin.localIP!= cSNATTunIP {
++			if cSNATMAC, ok := service.ObjectMeta.Annotations["c_snat_mac"]; ok {
++				if cSNATGatewayId, ok := service.ObjectMeta.Annotations["csnat_gw_id"]; ok {
++					otx.AddFlow("table=100, priority=10, ip, reg3=0x%s, actions=set_field:%s->eth_dst,move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],set_field:%s->tun_dst,output:1", cSNATGatewayId, cSNATMAC, cSNATTunIP)
++					if err := otx.EndTransaction(); err != nil {
++						glog.Errorf("Error adding OVS flows for centralized SNAT for service %v: %v", service, err)
++					}
++				}
++			}
++		}
++	}
+ }
+ 
+ func (plugin *OsdnNode) DeleteServiceRules(service *kapi.Service) {
+@@ -478,6 +494,15 @@ func (plugin *OsdnNode) DeleteServiceRules(service *kapi.Service) {
+ 			glog.Errorf("Error deleting OVS flows for service %v: %v", service, err)
+ 		}
+ 	}
++	// NOTE(lizk1989): Support for centralized SNAT
++	if len(service.Spec.ExternalIPs) > 0 && len(service.ObjectMeta.Annotations) >= 2 {
++		if cSNATGatewayId, ok := service.ObjectMeta.Annotations["csnat_gw_id"]; ok {
++			otx.DeleteFlows("table=100, ip, reg3=0x%s", cSNATGatewayId)
++			if err := otx.EndTransaction(); err != nil {
++				glog.Errorf("Error adding OVS flows for centralized SNAT for service %v: %v", service, err)
++			}
++		}
++	}
+ }
+ 
+ func generateBaseServiceRule(IP string, protocol kapi.Protocol, port int) string {
+diff --git a/pkg/sdn/plugin/node.go b/pkg/sdn/plugin/node.go
+index e73218b..5a6ac31 100644
+--- a/pkg/sdn/plugin/node.go
++++ b/pkg/sdn/plugin/node.go
+@@ -331,6 +331,16 @@ func isServiceChanged(oldsvc, newsvc *kapi.Service) bool {
+ 				return true
+ 			}
+ 		}
++		oldCSNATMac, omOK := oldsvc.ObjectMeta.Annotations["c_snat_mac"]
++		newCSNATMac, nmOK := newsvc.ObjectMeta.Annotations["c_snat_mac"]
++		if (omOK || nmOK) && oldCSNATMac != newCSNATMac {
++			return true
++		}
++		oldCSNATTunIP, otOK := oldsvc.ObjectMeta.Annotations["c_snat_tun_ip"]
++		newCSNATTunIP, ntOK := newsvc.ObjectMeta.Annotations["c_snat_tun_ip"]
++		if (otOK || ntOK) && oldCSNATTunIP != newCSNATTunIP {
++			return true
++		}
+ 		return false
+ 	}
+ 	return true
+diff --git a/pkg/sdn/plugin/pod_linux.go b/pkg/sdn/plugin/pod_linux.go
+index 963f6f0..7dcb9b2 100644
+--- a/pkg/sdn/plugin/pod_linux.go
++++ b/pkg/sdn/plugin/pod_linux.go
+@@ -48,6 +48,7 @@ type PodConfig struct {
+ 	ingressBandwidth string
+ 	egressBandwidth  string
+ 	wantMacvlan      bool
++        cSNATGatewayId   string
+ }
+ 
+ func getBandwidth(pod *kapi.Pod) (string, string, error) {
+@@ -111,6 +112,10 @@ func (m *podManager) getPodConfig(req *cniserver.PodRequest) (*PodConfig, *kapi.
+ 		return nil, nil, err
+ 	}
+ 
++	if cSNATGatewayId, ok := pod.ObjectMeta.Annotations["csnat_gw_id"]; ok {
++		config.cSNATGatewayId = cSNATGatewayId
++	}
++
+ 	return config, pod, nil
+ }
+ 
+@@ -438,7 +443,7 @@ func (m *podManager) setup(req *cniserver.PodRequest) (*cnitypes.Result, *runnin
+ 
+ 	contVethMac := contVeth.Attrs().HardwareAddr.String()
+ 	vnidStr := vnidToString(podConfig.vnid)
+-	out, err := exec.Command(sdnScript, setUpCmd, hostVeth.Attrs().Name, contVethMac, podIP.String(), vnidStr, podConfig.ingressBandwidth, podConfig.egressBandwidth).CombinedOutput()
++	out, err := exec.Command(sdnScript, setUpCmd, hostVeth.Attrs().Name, contVethMac, podIP.String(), vnidStr, podConfig.ingressBandwidth, podConfig.egressBandwidth, podConfig.cSNATGatewayId).CombinedOutput()
+ 	glog.V(5).Infof("SetUpPod network plugin output: %s, %v", string(out), err)
+ 
+ 	if isScriptError(err) {
+@@ -489,7 +494,7 @@ func (m *podManager) update(req *cniserver.PodRequest) (uint32, error) {
+ 	}
+ 
+ 	vnidStr := vnidToString(podConfig.vnid)
+-	out, err := exec.Command(sdnScript, updateCmd, hostVethName, contVethMac, podIP, vnidStr, podConfig.ingressBandwidth, podConfig.egressBandwidth).CombinedOutput()
++	out, err := exec.Command(sdnScript, updateCmd, hostVethName, contVethMac, podIP, vnidStr, podConfig.ingressBandwidth, podConfig.egressBandwidth, podConfig.cSNATGatewayId).CombinedOutput()
+ 	glog.V(5).Infof("UpdatePod network plugin output: %s, %v", string(out), err)
+ 
+ 	if isScriptError(err) {
+diff --git a/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier.go b/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier.go
+index cfa3c36..c005d22 100644
+--- a/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier.go
++++ b/vendor/k8s.io/kubernetes/pkg/proxy/iptables/proxier.go
+@@ -73,6 +73,9 @@ const (
+ 
+ 	// the mark-for-drop chain
+ 	KubeMarkDropChain utiliptables.Chain = "KUBE-MARK-DROP"
++
++	// the service external ips chain
++	kubeExternalIPsChain utiliptables.Chain = "KUBE-EXTERNAL-IPS"
+ )
+ 
+ // IPTablesVersioner can query the current iptables version.
+@@ -846,6 +849,16 @@ func (proxier *Proxier) syncProxyRules() {
+ 		}
+ 	}
+ 
++        // NOTE(lizk1989): create and link the kube external ips chain.
++        if _, err := proxier.iptables.EnsureChain(utiliptables.TableFilter, kubeExternalIPsChain); err != nil {
++                glog.Errorf("Failed to ensure that %s chain %s exists: %v", utiliptables.TableFilter, kubeExternalIPsChain, err)
++                return
++        }
++        if _, err := proxier.iptables.EnsureRule(utiliptables.Prepend, utiliptables.TableFilter, utiliptables.ChainInput, "-j", string(kubeExternalIPsChain)); err != nil {
++                glog.Errorf("Failed to ensure that %s chain %s jumps to %s: %v", utiliptables.TableFilter, utiliptables.ChainInput, kubeExternalIPsChain, err)
++                return
++        }
++
+ 	// Get iptables-save output so we can check for existing chains and rules.
+ 	// This will be a map of chain name to chain with rules as stored in iptables-save/iptables-restore
+ 	existingFilterChains := make(map[utiliptables.Chain]string)
+@@ -969,6 +982,9 @@ func (proxier *Proxier) syncProxyRules() {
+ 		}
+ 		writeLine(natRules, append(args, "-j", string(svcChain))...)
+ 
++		// NOTE(lizk1989) Used to install SNAT rules for pods backed to a service with externalIPs
++		installedEgressSNAT := false
++
+ 		// Capture externalIPs.
+ 		for _, externalIP := range svcInfo.externalIPs {
+ 			// If the "external" IP happens to be an IP that is local to this
+@@ -1017,6 +1033,59 @@ func (proxier *Proxier) syncProxyRules() {
+ 			// Allow traffic bound for external IPs that happen to be recognized as local IPs to stay local.
+ 			// This covers cases like GCE load-balancers which get added to the local routing table.
+ 			writeLine(natRules, append(dstLocalOnlyArgs, "-j", string(svcChain))...)
++
++			// NOTE(lizk1989): Allow pods backed to a service with external IPs, to use first external IP to access external network.
++			if !installedEgressSNAT {
++				if len(proxier.clusterCIDR) > 0 {
++					endpoints := make([]*endpointsInfo, 0)
++					for _, ep := range proxier.endpointsMap[svcName] {
++					        endpoints = append(endpoints, ep)
++					}
++					for _, endpoint := range endpoints {
++					        egressArgs := []string{
++					                "-m", protocol, "-p", protocol,
++					                "-s", fmt.Sprintf("%s/32", strings.Split(endpoint.ip, ":")[0]),
++					                "!", "-d", proxier.clusterCIDR,
++					                "-j", "SNAT", "--to-source", externalIP,
++					        }
++						if _, err := proxier.iptables.EnsureRule(utiliptables.Prepend, utiliptables.TableNAT, utiliptables.ChainPostrouting, egressArgs...); err != nil {
++						        glog.Errorf("Failed to ensure egress SNAT rule for externalIPs for Service %s", svcName.String())
++						        return
++						}
++					        ingressArgs := []string{
++					                "-m", protocol, "-p", protocol,
++					                "!", "-s", proxier.clusterCIDR,
++					                "-d", fmt.Sprintf("%s/32", strings.Split(endpoint.ip, ":")[0]),
++					                "-j", "ACCEPT",
++					        }
++						if _, err := proxier.iptables.EnsureRule(utiliptables.Prepend, utiliptables.TableNAT, utiliptables.ChainPostrouting, ingressArgs...); err != nil {
++						        glog.Errorf("Failed to ensure ingress ACCEPT rule for externalIPs for Service %s", svcName.String())
++						        return
++						}
++                                                firewallArgs := []string{
++					                "-m", protocol, "-p", protocol,
++							"-d", fmt.Sprintf("%s/32", externalIP),
++							"--dport", fmt.Sprintf("%d", svcInfo.port),
++					                "-j", "ACCEPT",
++					        }
++						if _, err := proxier.iptables.EnsureRule(utiliptables.Prepend, utiliptables.TableFilter, kubeExternalIPsChain, firewallArgs...); err != nil {
++						        glog.Errorf("Failed to ensure ingress ACCEPT rule for externalIPs for Service %s in chain %v", svcName.String(), kubeExternalIPsChain)
++						        return
++						}
++                                                firewallDropArgs := []string{
++					                "-m", protocol, "-p", protocol,
++							"-d", fmt.Sprintf("%s/32", externalIP),
++					                "-j", "DROP",
++					        }
++						if _, err := proxier.iptables.EnsureRule(utiliptables.Append, utiliptables.TableFilter, kubeExternalIPsChain, firewallDropArgs...); err != nil {
++						        glog.Errorf("Failed to ensure ingress ACCEPT rule for externalIPs for Service %s in chain %v", svcName.String(), kubeExternalIPsChain)
++						        return
++						}
++					        installedEgressSNAT = true
++					}
++			        }
++			}
++
+ 		}
+ 
+ 		// Capture load-balancer ingress.

@@ -1,0 +1,5 @@
+dd if=/dev/zero of=/usr/share/nginx/html/tmp.html bs=100M count=20
+
+wget --limit-rate=1k http://192.0.0.100/tmp.html -O /dev/null
+
+for((i=0;i!=100;i++)); do ip netns exec client2 wget --limit-rate=100 http://192.0.0.100/index.html -O /dev/null -b ; done

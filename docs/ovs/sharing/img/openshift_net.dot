@@ -1,0 +1,35 @@
+digraph {
+    node [shape=box]
+    subgraph cluster {
+        label = "cluster\n10.128.0.0/16"
+        labelloc = "b"
+
+        master1 [label="master1\n10.128.0.0/22"]
+        master2 [label="master2\n10.128.4.0/22"]
+        master3 [label="master3\n10.128.8.0/22"]
+
+        node1 [label="node1\n10.128.12.0/22"]
+        node2 [label="node2\n10.128.16.0/22"]
+        node3 [label="node2\n10.128.20.0/22"]
+
+        pod1 [label="pod1\n10.128.12.100"]
+        pod2 [label="pod2\n10.128.16.101"]
+        pod3 [label="pod2\n10.128.20.102"]
+
+        master1 -> node1
+        master2 -> node1
+        master3 -> node1
+        master1 -> node2
+        master2 -> node2
+        master3 -> node2
+        master1 -> node3
+        master2 -> node3
+        master3 -> node3
+        node1 -> pod1
+        node2 -> pod2
+        node3 -> pod3
+    }
+    client -> dns -> loadbalancer -> master1
+    loadbalancer -> master2
+    loadbalancer -> master3
+}

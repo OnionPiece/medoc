@@ -1,0 +1,36 @@
+ovn_client is interface for Neutron to handle with ovsdb, it calls nb_idl to generate commands objects within nb_idl.transaction, and add the commands to transaction. Once transaction exits, it will call commit to put it self on nb_idl.ovsdb_connection.txns(TransactionQueue, see below), and wait(until timeout) to get result from its results queue and return.
+
+transaction is ovsdbapp.backend.ovs_idl.transaction.Transaction, which:
+  - has a commands list to store command add by ovn_client
+   \- all commands in commands list will call their run_idl methods when transaction do_commit is
+      called(in ovsdb_connection, see below), and in its do_commit,
+      a new transaction(ovs.db.idl.Transaction) is created to commit transaction in message level
+  - has a results queue to store command execution result
+
+The nb_idl for ovn_client is OvsdbNbOvnIdl, which:
+  - has commands object for southbound processing
+   \- it also inherits ones implemented by ovsdbapp.schema.ovn_northbound.impl_idl.OvnNbApiIdlImpl
+
+  - has ovsdb_connection to OVN_Northbound, check below ovsdb_connection
+  - has transaction method will create a transaction to handle commands
+
+ovsdb_connection is ovsdbapp.backend.ovs_idl.connection.Connection, which:
+  - will be started in nb_idl initialization
+   \- will start a threading as daemon, while it's running, it get transaction from queue,
+      call transaction's do_commit method and put result into queue.
+    - each time transaction run do_commit, ovsdb_connection.idl will be called with:
+      run: send request or process received response from ovsdb, it's the message interface to ovsdb
+      wait: call idl._session wait and recv_wait for message
+
+  - has transaction queue to queue transaction
+
+ovsdb_connection.idl will:
+  - register tables in ovsdb
+  - register notify event
+  - root inherit from ovs.db.idl.Idl
+   \- which will process messages between ovsdb and current client
+
+ovsdb_connection.idl._session is ovs.jsonrpc.Session, which:
+  - open in idl init
+  - has reconnect object, and its probe interval will be set in OvsdbNbOvnIdl init
+    and it prime job is to keep connection to ovsdb

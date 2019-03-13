@@ -1,0 +1,11 @@
+digraph {
+    flow   [shape=box, label="flows"];
+    switch [shape=record, label="<f0> |<f1> bridge|<f2>", width=3];
+    port1  [shape=box, label="Port 1"];
+    port2  [shape=box, label="Port 2"];
+
+    "switch":f0 -> "switch":f2 [headclip=false, tailclip=false, style="dotted", dir=both]
+    "switch":f0 -> port1 [dir=both, taillabel="VLAN tag"]
+    "switch":f2 -> port2 [dir=both, taillabel="VLAN tag"]
+    flow -> "switch":f1 [dir=both]
+}

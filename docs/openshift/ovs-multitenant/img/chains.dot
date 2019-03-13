@@ -1,0 +1,17 @@
+digraph {
+    node [shape=box];
+    fr [shape=none, label="From remote"];
+    tr [shape=none, label="To remote"];
+    local [shape=none, label="local (routing desicion)"];
+    preroute [label="PREROUTING"];
+    input [label="INPUT"];
+    forward [label="FORWARD"];
+    output [label="OUTPUT"];
+    postroute [label="POSTROUTING"];
+
+    fr -> preroute;
+    preroute -> local -> forward -> postroute [color=blue, label="Forwared by local", fontcolor=blue]
+    preroute -> input -> local [color=green, label="Remote to local", fontcolor=green];
+    local -> output -> postroute [color=red, label="Local to remote", fontcolor=red];
+    postroute -> tr;
+}
