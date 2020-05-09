@@ -5,8 +5,10 @@ Ubuntu上创建Swap分区
 无论是我自己的老本，还是VPS，内存都比较不够。
 
 1. swapoff -a 先停掉现有的swap，如果有的话但仍然不够用的话。
+   (可以先swapon --show看查一下当前使用的swap信息)
 
 2. dd if=/dev/zero of=/swapfile bs=1M count=1024 酌情创建swapfile，vps创建了1G的，本上创建了16G的用来多跑虚机。
+   (或者 fallocate -l 16G /swapfile)
 
 3. mkswap /swapfile
 

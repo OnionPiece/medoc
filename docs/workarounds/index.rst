@@ -8,3 +8,4 @@ Workarounds
     iptables_random_drop.rst
     shadowsocks.rst
     swap.rst
+    snap.rst
